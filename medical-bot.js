@@ -98,38 +98,106 @@ function parseNumberedList(text) {
   return items;
 }
 
-// Реальная функция для записи в Яндекс Таблицы
+// Функция для записи в Яндекс Таблицы
 async function processSurveyData(data) {
   try {
-    // Формируем данные для записи - сохраняем списки клиник
+    // Формируем данные для записи
     const rowData = [
       data.name || '',
       data.position || '',
       data.company || '',
-      data.reputationUnder400.join('\n'),    // Каждая клиника с новой строки
-      data.reputationOver400.join('\n'),     // Каждая клиника с новой строки
-      data.marketingUnder400.join('\n'),     // Каждая клиника с новой строки
-      data.marketingOver400.join('\n')       // Каждая клиника с новой строки
+      data.reputationUnder400.join('\n'),
+      data.reputationOver400.join('\n'),
+      data.marketingUnder400.join('\n'),
+      data.marketingOver400.join('\n')
     ];
 
-    console.log('📊 Данные для записи в таблицу:');
-    console.log('Имя:', data.name);
-    console.log('Должность:', data.position);
-    console.log('Компания:', data.company);
-    console.log('Репутация до 400 млн:\n', data.reputationUnder400.join('\n'));
-    console.log('Репутация свыше 400 млн:\n', data.reputationOver400.join('\n'));
-    console.log('Маркетинг до 400 млн:\n', data.marketingUnder400.join('\n'));
-    console.log('Маркетинг свыше 400 млн:\n', data.marketingOver400.join('\n'));
+    console.log('📊 Данные для записи:', rowData);
 
-    // TODO: Реальная интеграция с Яндекс Таблицами API
-    // Пока имитируем успешную запись
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Создаем CSV строку
+    const csvRow = rowData.map(field => `"${field.replace(/"/g, '""')}"`).join(',') + '\n';
     
-    console.log('✅ Данные "записаны" в таблицу');
-    return true;
+    // Сохраняем в файл на Яндекс Диске
+    const success = await saveToYandexDisk(csvRow);
+    
+    return success;
     
   } catch (error) {
     console.error('❌ Ошибка записи данных:', error);
+    return false;
+  }
+}
+
+// Функция для сохранения в файл на Яндекс Диске
+async function saveToYandexDisk(csvData) {
+  try {
+    const fileName = `medical_survey_data.csv`;
+    const filePath = `${SPREADSHEET_ID}/${fileName}`;
+
+    // Проверяем существует ли файл
+    let fileExists = false;
+    try {
+      await axios.get(`https://cloud-api.yandex.net/v1/disk/resources?path=${encodeURIComponent(filePath)}`, {
+        headers: {
+          'Authorization': `OAuth ${YANDEX_OAUTH_TOKEN}`
+        }
+      });
+      fileExists = true;
+    } catch (error) {
+      if (error.response?.status === 404) {
+        fileExists = false;
+      } else {
+        throw error;
+      }
+    }
+
+    if (!fileExists) {
+      // Создаем файл с заголовками
+      const headers = ['Имя', 'Должность', 'Компания', 'Репутация (до 400 млн)', 'Репутация (свыше 400 млн)', 'Маркетинг (до 400 млн)', 'Маркетинг (свыше 400 млн)'];
+      const headerRow = headers.map(header => `"${header}"`).join(',') + '\n';
+      const fullData = headerRow + csvData;
+      
+      // Загружаем новый файл
+      const uploadResponse = await axios.get(`https://cloud-api.yandex.net/v1/disk/resources/upload?path=${encodeURIComponent(filePath)}&overwrite=true`, {
+        headers: {
+          'Authorization': `OAuth ${YANDEX_OAUTH_TOKEN}`
+        }
+      });
+
+      await axios.put(uploadResponse.data.href, fullData, {
+        headers: {
+          'Content-Type': 'text/csv'
+        }
+      });
+    } else {
+      // Добавляем к существующему файлу
+      const downloadResponse = await axios.get(`https://cloud-api.yandex.net/v1/disk/resources/download?path=${encodeURIComponent(filePath)}`, {
+        headers: {
+          'Authorization': `OAuth ${YANDEX_OAUTH_TOKEN}`
+        }
+      });
+
+      const existingContent = await axios.get(downloadResponse.data.href);
+      const updatedContent = existingContent.data + csvData;
+
+      const uploadResponse = await axios.get(`https://cloud-api.yandex.net/v1/disk/resources/upload?path=${encodeURIComponent(filePath)}&overwrite=true`, {
+        headers: {
+          'Authorization': `OAuth ${YANDEX_OAUTH_TOKEN}`
+        }
+      });
+
+      await axios.put(uploadResponse.data.href, updatedContent, {
+        headers: {
+          'Content-Type': 'text/csv'
+        }
+      });
+    }
+
+    console.log('✅ Данные успешно записаны в Яндекс Диск');
+    return true;
+
+  } catch (error) {
+    console.error('❌ Ошибка сохранения на Яндекс Диск:', error.response?.data || error.message);
     return false;
   }
 }
