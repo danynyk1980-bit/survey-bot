@@ -132,6 +132,80 @@ async function processSurveyData(data) {
 async function saveToYandexDisk(csvData) {
   try {
     const fileName = `medical_survey_data.csv`;
+    const filePath = `bot_data/${fileName}`;
+
+    // Проверяем существует ли файл
+    let fileExists = false;
+    try {
+      await axios.get(`https://cloud-api.yandex.net/v1/disk/resources?path=${encodeURIComponent(filePath)}`, {
+        headers: {
+          'Authorization': `OAuth ${YANDEX_OAUTH_TOKEN}`
+        }
+      });
+      fileExists = true;
+    } catch (error) {
+      if (error.response?.status === 404) {
+        fileExists = false;
+      } else {
+        throw error;
+      }
+    }
+
+    if (!fileExists) {
+      // Создаем файл с заголовками
+      const headers = ['Имя', 'Должность', 'Компания', 'Репутация (до 400 млн)', 'Репутация (свыше 400 млн)', 'Маркетинг (до 400 млн)', 'Маркетинг (свыше 400 млн)'];
+      const headerRow = headers.map(header => `"${header}"`).join(',') + '\n';
+      const fullData = headerRow + csvData;
+      
+      // Загружаем новый файл
+      const uploadResponse = await axios.get(`https://cloud-api.yandex.net/v1/disk/resources/upload?path=${encodeURIComponent(filePath)}&overwrite=true`, {
+        headers: {
+          'Authorization': `OAuth ${YANDEX_OAUTH_TOKEN}`
+        }
+      });
+
+      await axios.put(uploadResponse.data.href, fullData, {
+        headers: {
+          'Content-Type': 'text/csv'
+        }
+      });
+    } else {
+      // Добавляем к существующему файлу
+      const downloadResponse = await axios.get(`https://cloud-api.yandex.net/v1/disk/resources/download?path=${encodeURIComponent(filePath)}`, {
+        headers: {
+          'Authorization': `OAuth ${YANDEX_OAUTH_TOKEN}`
+        }
+      });
+
+      const existingContent = await axios.get(downloadResponse.data.href);
+      const updatedContent = existingContent.data + csvData;
+
+      const uploadResponse = await axios.get(`https://cloud-api.yandex.net/v1/disk/resources/upload?path=${encodeURIComponent(filePath)}&overwrite=true`, {
+        headers: {
+          'Authorization': `OAuth ${YANDEX_OAUTH_TOKEN}`
+        }
+      });
+
+      await axios.put(uploadResponse.data.href, updatedContent, {
+        headers: {
+          'Content-Type': 'text/csv'
+        }
+      });
+    }
+
+    console.log('✅ Данные успешно записаны в Яндекс Диск');
+    return true;
+
+  } catch (error) {
+    console.error('❌ Ошибка сохранения на Яндекс Диск:', error.response?.data || error.message);
+    return false;
+  }
+}
+
+// Функция для сохранения в файл на Яндекс Диске
+async function saveToYandexDisk(csvData) {
+  try {
+    const fileName = `medical_survey_data.csv`;
     const filePath = `${SPREADSHEET_ID}/${fileName}`;
 
     // Проверяем существует ли файл
