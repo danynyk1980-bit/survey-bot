@@ -210,7 +210,27 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Medical Bot server started on port ${PORT}`);
-  bot.startPolling().then(() => {
-    console.log('✅ Medical Bot polling started successfully');
-  });
+  
+  // Задержка перед запуском polling
+  setTimeout(() => {
+    bot.startPolling({
+      polling: {
+        params: {
+          timeout: 60,
+          allowed_updates: ['message', 'callback_query']
+        }
+      }
+    }).then(() => {
+      console.log('✅ Medical Bot polling started successfully');
+    }).catch(error => {
+      if (error.code === 'ETELEGRAM' && error.message.includes('409 Conflict')) {
+        console.log('⚠️  Конфликт подключения. Перезапуск через 10 секунд...');
+        setTimeout(() => {
+          bot.startPolling();
+        }, 10000);
+      } else {
+        console.error('❌ Ошибка запуска бота:', error);
+      }
+    });
+  }, 3000); // Задержка 3 секунды
 });
